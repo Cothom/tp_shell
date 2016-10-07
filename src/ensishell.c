@@ -114,6 +114,29 @@ void jobs() {
     }
 }
 
+void connect_process(char** writer_cmd, char** reader_cmd) {
+	int file_descriptors[2];
+	pipe(file_descriptors);
+	int pid_reader = fork();
+	if (!pid_reader) {
+		dup2(file_descriptors[0], 0);
+		close(file_descriptors[1]);
+		close(file_descriptors[0]);
+		execvp(reader_cmd[0], reader_cmd);
+	} else {
+		int pid_writer = fork();
+		if (!pid_writer) {
+			dup2(file_descriptors[1], 1);
+			close(file_descriptors[0]);
+			close(file_descriptors[1]);
+			execvp(writer_cmd[0], writer_cmd);
+		} else {
+			int status;
+			wait(&status);
+		}
+	}
+}
+
 int main() {
         printf("Variante %d: %s\n", VARIANTE, VARIANTE_STRING);
 
@@ -186,32 +209,49 @@ int main() {
                 jobs();
                 continue;
             }
+		}
+		if (l->seq[1] != NULL)
+			connect_process(l->seq[0], l->seq[1]);
+		else {
+			int pid = fork();
+			if (!pid) {
+				if (execvp(l->seq[0][0], l->seq[0]) == -1) {
+					fprintf(stderr, "Commande non valide.\n");
+					exit(-1);
+				} //else exit(0);
+			} else {
+				if (!l->bg) {
+					int status;
+					waitpid(pid, &status, 0);
+				} else {
+					add_process_background(l->seq[0][0], pid);
+				}
+			}
+		}
 
-            int pid = fork();
-            if (!pid) {
-                if (l->bg) {
-                    int pid_bg = fork();
-                    if (!pid_bg) {
-                        if (execvp(l->seq[i][0], l->seq[i]) == -1) {
-                            fprintf(stderr, "Commande non valide.\n");
-                            exit(-1);
-                        }
-                    } else {
-                        int status_bg;
-                        add_process_background(l->seq[i][0], pid_bg);
-                        jobs();
-                        wait(&status_bg);
-                        remove_process_background(pid_bg);
-                        exit(0);
-                    }
-                } else {
-                    if (execvp(l->seq[i][0], l->seq[i]) == -1) {
-                        fprintf(stderr, "Commande non valide.\n");
-                        exit(-1);
-                    }
-                }
-            }			
-        }
+//            if (!pid) {
+//                if (l->bg) {
+//                    int pid_bg = fork();
+//                    if (!pid_bg) {
+//                        if (execvp(l->seq[i][0], l->seq[i]) == -1) {
+//                            fprintf(stderr, "Commande non valide.\n");
+//                            exit(-1);
+//                        }
+//                    } else {
+//                        int status_bg;
+//                        add_process_background(l->seq[i][0], pid_bg);
+//                        jobs();
+//                        wait(&status_bg);
+//                        remove_process_background(pid_bg);
+//                        exit(0);
+//                    }
+//                } else {
+//                    if (execvp(l->seq[i][0], l->seq[i]) == -1) {
+//                        fprintf(stderr, "Commande non valide.\n");
+//                        exit(-1);
+//                    }
+//                }
+//            }			
 	}
 
 }
