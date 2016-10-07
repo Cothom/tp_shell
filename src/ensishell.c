@@ -129,13 +129,11 @@ int main() {
                 printf("'%s' ", cmd[j]);
             }
             printf("\n");
-        }
-        for (i = 0 ; l->seq[i] != 0 ; i++) {
             int status;
             int pid_fils = fork();
+            if (!l->bg) waitpid(pid_fils, &status, 0);
             if (pid_fils > 0) break;
             execvp(l->seq[i][0], l->seq[i]);
-            waitpid(pid_fils, &status, 0); /* Facultatif */
         }
     }
 
