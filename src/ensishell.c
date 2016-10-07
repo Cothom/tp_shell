@@ -61,9 +61,8 @@ void terminate(char *line) {
 	exit(0);
 }
 
-/* Debut Modification RANA */ 
 struct process_background_linked {
-        char* nom;
+        char* name;
         int pid;
         struct process_background_linked* next;
 };
@@ -72,32 +71,47 @@ struct process_background_linked* process_background_head = NULL;
 struct process_background_linked* process_background_tail = NULL;
       
 
-void add_process_background(char* nom, int* pid) {
-    if (nom != NULL && pid != NULL) {
-	struct process_background_linked* Courant = malloc(sizeof(struct process_background_linked));
-	Courant->nom = nom;
-	Courant->pid = *pid;
-	Courant->next = NULL;
-	
- 	if (process_background_head == NULL) {
-	    process_background_head = Courant;
-	    process_background_tail = Courant;
-	} else {
-	    process_background_tail->next = Courant;
-	    process_background_tail = Courant;
-	}
+void add_process_background(char* name, int pid) {
+    if (name != NULL) {
+        struct process_background_linked* current = (struct process_background_linked*) malloc(sizeof(struct process_background_linked));
+        current->name = (char*) malloc(strlen(name) + 1);
+        strcpy(current->name, name);
+        current->pid = pid;
+        current->next = NULL;
+
+        if (process_background_head == NULL) {
+            process_background_head = current;
+            process_background_tail = current;
+
+        } else {
+            process_background_tail->next = current;
+            process_background_tail = current;
+        }
     }
 }
 
+void remove_process_background(int pid) {
+    struct process_background_linked* current = process_background_head;
+    struct process_background_linked* prev = NULL;
+    while (current != NULL || current->pid != pid) {
+        prev = current;
+        current = current->next;
+    }
+    if (current == NULL) return;
+    prev->next = current->next;
+    free(current->name);
+    free(current);
+}
+
 void jobs() {
-    if (process_background_head == NULL) {
-	struct process_background_linked* Courant = process_background_head;
-	do {
-	    printf("Commande : %s, PID :%i \n", Courant->nom, Courant->pid);
-	} while (Courant != process_background_tail);
+    if (process_background_head != NULL) {
+        struct process_background_linked* current = process_background_head;
+        while (current != NULL) {
+            printf("Commande : %s, PID :%i \n", current->name, current->pid);
+            current = current->next;
+        }
     }
 }
-/* Fin Modification RANA */
 
 int main() {
         printf("Variante %d: %s\n", VARIANTE, VARIANTE_STRING);
@@ -163,41 +177,40 @@ int main() {
 		for (i=0; l->seq[i]!=0; i++) {
 			char **cmd = l->seq[i];
 			printf("seq[%d]: ", i);
-                        for (j=0; cmd[j]!=0; j++) {
-			    printf("'%s' ", cmd[j]);
-				
+            for (j=0; cmd[j]!=0; j++) {
+                printf("'%s' ", cmd[j]);
+            }
+            printf("\n");
+            if (!strcmp(l->seq[i][0], "jobs")) {
+                jobs();
+                continue;
+            }
+
+            int pid = fork();
+            if (!pid) {
+                if (l->bg) {
+                    int pid_bg = fork();
+                    if (!pid_bg) {
+                        if (execvp(l->seq[i][0], l->seq[i]) == -1) {
+                            fprintf(stderr, "Commande non valide.\n");
+                            exit(-1);
                         }
-
-			// DEBUT
-		        printf("\n");
-			int pid = fork();
-			if (!pid) {
-			    if (!strcmp(l->seq[i][0], "jobs")) {
-				printf("JOBS \n");
-				jobs();
-				exit(0);
-			    } else if (execvp(l->seq[i][0],l->seq[i]) == -1) {
-				printf("Commande non valide");
-				exit(-1);
-			    } else {
-				if (l->bg) {
-				    int p = getpid();
-				    add_process_background(l->seq[i][0], &p);
-				}
-				exit(0);
-			    }
-			} else {
-			    if (!l->bg) {
-				int wstatus;
-				wait(&wstatus);
-			    }
-			}			
-	        
-			// FIN
-
-			
-			printf("\n");
-		}
+                    } else {
+                        int status_bg;
+                        add_process_background(l->seq[i][0], pid_bg);
+                        jobs();
+                        wait(&status_bg);
+                        remove_process_background(pid_bg);
+                        exit(0);
+                    }
+                } else {
+                    if (execvp(l->seq[i][0], l->seq[i]) == -1) {
+                        fprintf(stderr, "Commande non valide.\n");
+                        exit(-1);
+                    }
+                }
+            }			
+        }
 	}
 
 }
