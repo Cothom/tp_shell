@@ -72,31 +72,33 @@ struct process_background_linked* process_background_head = NULL;
 struct process_background_linked* process_background_tail = NULL;
       
 
-void add_process_background(char* nom, int* pid) {
-    if (nom != NULL && pid != NULL) {
-	struct process_background_linked* Courant = malloc(sizeof(struct process_background_linked));
-	Courant->nom = nom;
-	Courant->pid = *pid;
-	Courant->next = NULL;
+void add_process_background(char* name, int pid) {
+    if (nom != NULL) {
+	struct process_background_linked* current = malloc(sizeof(struct process_background_linked));
+	current->nom = nom;
+	current->pid = pid;
+	current->next = NULL;
 	
  	if (process_background_head == NULL) {
-	    process_background_head = Courant;
-	    process_background_tail = Courant;
+	    process_background_head = current;
+	    process_background_tail = current;
 	} else {
-	    process_background_tail->next = Courant;
-	    process_background_tail = Courant;
+	    process_background_tail->next = current;
+	    process_background_tail = current;
 	}
     }
 }
 
 void jobs() {
-    if (process_background_head == NULL) {
-	struct process_background_linked* Courant = process_background_head;
-	do {
-	    printf("Commande : %s, PID :%i \n", Courant->nom, Courant->pid);
-	} while (Courant != process_background_tail);
+    if (process_background_head != NULL) {
+	struct process_background_linked* current = process_background_head;
+	while (current != NULL) {
+	    printf("Commande : %s, PID :%i \n", current->name, current->pid);
+	    current = current->next;
+	}
     }
 }
+
 /* Fin Modification RANA */
 
 int main() {
@@ -173,30 +175,24 @@ int main() {
 			int pid = fork();
 			if (!pid) {
 			    if (!strcmp(l->seq[i][0], "jobs")) {
-				printf("JOBS \n");
+				printf("PD");
 				jobs();
 				exit(0);
 			    } else if (execvp(l->seq[i][0],l->seq[i]) == -1) {
-				printf("Commande non valide");
+				fprintf(stderr, "Commande non valide.");
 				exit(-1);
-			    } else {
-				if (l->bg) {
-				    int p = getpid();
-				    add_process_background(l->seq[i][0], &p);
-				}
-				exit(0);
 			    }
-			} else {
+			    
+			} else {			    
 			    if (!l->bg) {
-				int wstatus;
-				wait(&wstatus);
+				int status;
+				waitpid(pid, &status, 0);
+			    } else {
+				add_process_background(l->seq[i][0], pid);
 			    }
 			}			
 	        
 			// FIN
-
-			
-			printf("\n");
 		}
 	}
 
