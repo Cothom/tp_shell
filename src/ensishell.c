@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "variante.h"
 #include "readcmd.h"
@@ -61,9 +62,8 @@ void terminate(char *line) {
 	exit(0);
 }
 
-/* Debut Modification RANA */ 
 struct process_background_linked {
-        char* nom;
+        char* name;
         int pid;
         struct process_background_linked* next;
 };
@@ -73,6 +73,7 @@ struct process_background_linked* process_background_tail = NULL;
       
 
 void add_process_background(char* name, int pid) {
+<<<<<<< HEAD
     if (nom != NULL) {
 	struct process_background_linked* current = malloc(sizeof(struct process_background_linked));
 	current->nom = nom;
@@ -86,11 +87,42 @@ void add_process_background(char* name, int pid) {
 	    process_background_tail->next = current;
 	    process_background_tail = current;
 	}
+=======
+    if (name != NULL) {
+        struct process_background_linked* current = (struct process_background_linked*) malloc(sizeof(struct process_background_linked));
+        current->name = (char*) malloc(strlen(name) + 1);
+        strcpy(current->name, name);
+        current->pid = pid;
+        current->next = NULL;
+
+        if (process_background_head == NULL) {
+            process_background_head = current;
+            process_background_tail = current;
+
+        } else {
+            process_background_tail->next = current;
+            process_background_tail = current;
+        }
+>>>>>>> 7c4a06e807b5449525abe94b91564942890964c4
     }
+}
+
+void remove_process_background(int pid) {
+    struct process_background_linked* current = process_background_head;
+    struct process_background_linked* prev = NULL;
+    while (current != NULL || current->pid != pid) {
+        prev = current;
+        current = current->next;
+    }
+    if (current == NULL) return;
+    prev->next = current->next;
+    free(current->name);
+    free(current);
 }
 
 void jobs() {
     if (process_background_head != NULL) {
+<<<<<<< HEAD
 	struct process_background_linked* current = process_background_head;
 	while (current != NULL) {
 	    printf("Commande : %s, PID :%i \n", current->name, current->pid);
@@ -100,6 +132,38 @@ void jobs() {
 }
 
 /* Fin Modification RANA */
+=======
+        struct process_background_linked* current = process_background_head;
+        while (current != NULL) {
+            printf("Commande : %s, PID :%i \n", current->name, current->pid);
+            current = current->next;
+        }
+    }
+}
+
+void connect_process(char** writer_cmd, char** reader_cmd) {
+	int file_descriptors[2];
+	pipe(file_descriptors);
+	int pid_reader = fork();
+	if (!pid_reader) {
+		dup2(file_descriptors[0], 0);
+		close(file_descriptors[1]);
+		close(file_descriptors[0]);
+		execvp(reader_cmd[0], reader_cmd);
+	} else {
+		int pid_writer = fork();
+		if (!pid_writer) {
+			dup2(file_descriptors[1], 1);
+			close(file_descriptors[0]);
+			close(file_descriptors[1]);
+			execvp(writer_cmd[0], writer_cmd);
+		} else {
+			int status;
+			wait(&status);
+		}
+	}
+}
+>>>>>>> 7c4a06e807b5449525abe94b91564942890964c4
 
 int main() {
         printf("Variante %d: %s\n", VARIANTE, VARIANTE_STRING);
@@ -165,15 +229,21 @@ int main() {
 		for (i=0; l->seq[i]!=0; i++) {
 			char **cmd = l->seq[i];
 			printf("seq[%d]: ", i);
-                        for (j=0; cmd[j]!=0; j++) {
-			    printf("'%s' ", cmd[j]);
-				
-                        }
-
-			// DEBUT
-		        printf("\n");
+            for (j=0; cmd[j]!=0; j++) {
+                printf("'%s' ", cmd[j]);
+            }
+            printf("\n");
+            if (!strcmp(l->seq[i][0], "jobs")) {
+                jobs();
+                continue;
+            }
+		}
+		if (l->seq[1] != NULL)
+			connect_process(l->seq[0], l->seq[1]);
+		else {
 			int pid = fork();
 			if (!pid) {
+<<<<<<< HEAD
 			    if (!strcmp(l->seq[i][0], "jobs")) {
 				printf("PD");
 				jobs();
@@ -193,7 +263,45 @@ int main() {
 			}			
 	        
 			// FIN
+=======
+				if (execvp(l->seq[0][0], l->seq[0]) == -1) {
+					fprintf(stderr, "Commande non valide.\n");
+					exit(-1);
+				} //else exit(0);
+			} else {
+				if (!l->bg) {
+					int status;
+					waitpid(pid, &status, 0);
+				} else {
+					add_process_background(l->seq[0][0], pid);
+				}
+			}
+>>>>>>> 7c4a06e807b5449525abe94b91564942890964c4
 		}
+
+//            if (!pid) {
+//                if (l->bg) {
+//                    int pid_bg = fork();
+//                    if (!pid_bg) {
+//                        if (execvp(l->seq[i][0], l->seq[i]) == -1) {
+//                            fprintf(stderr, "Commande non valide.\n");
+//                            exit(-1);
+//                        }
+//                    } else {
+//                        int status_bg;
+//                        add_process_background(l->seq[i][0], pid_bg);
+//                        jobs();
+//                        wait(&status_bg);
+//                        remove_process_background(pid_bg);
+//                        exit(0);
+//                    }
+//                } else {
+//                    if (execvp(l->seq[i][0], l->seq[i]) == -1) {
+//                        fprintf(stderr, "Commande non valide.\n");
+//                        exit(-1);
+//                    }
+//                }
+//            }			
 	}
 
 }
