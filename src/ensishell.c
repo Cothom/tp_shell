@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "variante.h"
 #include "readcmd.h"
@@ -113,6 +115,43 @@ void jobs() {
     }
 }
 
+void modify_io(char* in, char* out) {
+    int fd_in, fd_out;
+    if (in) {
+        fd_in = open(in, O_RDONLY);
+        dup2(fd_in, 0);
+        close(fd_in);
+    }
+    if (out) {
+        fd_out = open(out, O_RDONLY | O_WRONLY | O_CREAT);
+        dup2(fd_out, 1);
+        close(fd_out);
+    }
+}
+
+void connect_process(char** writer_cmd, char** reader_cmd) {
+	int file_descriptors[2];
+	pipe(file_descriptors);
+	int pid_reader = fork();
+	if (!pid_reader) {
+		dup2(file_descriptors[0], 0);
+		close(file_descriptors[1]);
+		close(file_descriptors[0]);
+		execvp(reader_cmd[0], reader_cmd);
+	} else {
+		int pid_writer = fork();
+		if (!pid_writer) {
+			dup2(file_descriptors[1], 1);
+			close(file_descriptors[0]);
+			close(file_descriptors[1]);
+			execvp(writer_cmd[0], writer_cmd);
+		} else {
+			int status;
+			wait(&status);
+		}
+	}
+}
+
 int main() {
     printf("Variante %d: %s\n", VARIANTE, VARIANTE_STRING);
 
@@ -185,27 +224,26 @@ int main() {
                 jobs();
                 continue;
             }
-            if (l->seq[1] != NULL) {
-                connect_process(l->seq[0], l->seq[1]);
-            } else {
-                int pid = fork();
-                if (!pid) {
-                    if (execvp(l->seq[i][0], l->seq[i]) == -1) {
-                        fprintf(stderr, "Commande non valide.\n");
-                        exit(-1);
-                    }
-                } else {
-                    if (!l->bg) {
-                        int status;
-                        waitpid(pid, &status, 0);
-                    } else {
-                        add_process_background(l->seq[0][0], pid);
-                    }
-                }
-            }		
-        }
-    }
-}
-
+		}
+		if (l->seq[1] != NULL)
+			connect_process(l->seq[0], l->seq[1]);
+		else {
+			int pid = fork();
+			if (!pid) {
+                modify_io(l->in, l->out);
+				if (execvp(l->seq[0][0], l->seq[0]) == -1) {
+					fprintf(stderr, "Commande non valide.\n");
+					exit(-1);
+				} //else exit(0);
+			} else {
+				if (!l->bg) {
+					int status;
+					waitpid(pid, &status, 0);
+				} else {
+					add_process_background(l->seq[0][0], pid);
+				}
+			}
+		}
+	}
 }
 
