@@ -118,7 +118,7 @@ void jobs() {
 void modify_io(char* in, char* out) {
     int fd_in, fd_out;
     if (in) {
-        fd_in = open(in, O_RDONLY);
+        fd_in = open(in, O_RDONLY | O_WRONLY | O_CREAT);
         dup2(fd_in, 0);
         close(fd_in);
     }
@@ -246,4 +246,3 @@ int main() {
 		}
 	}
 }
-
