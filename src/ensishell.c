@@ -9,13 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <fcntl.h>
 
 #include "variante.h"
 #include "readcmd.h"
 
 #include <sys/types.h> //
 #include <sys/wait.h> //
+#include <fcntl.h> //
+#include <signal.h> //
+#include <string.h> //
 
 #ifndef VARIANTE
 #error "Variante non défini !!"
@@ -89,6 +91,7 @@ void add_process_background(char* name, int pid) {
             process_background_tail->next = current;
             process_background_tail = current;
         }
+
     }
 }
 
@@ -115,41 +118,89 @@ void jobs() {
     }
 }
 
-void modify_io(char* in, char* out) {
+/* Fin Modification RANA */
+
+void modify_io(struct cmdline *l) {
     int fd_in, fd_out;
-    if (in) {
-        fd_in = open(in, O_RDONLY | O_WRONLY | O_CREAT);
+    if (l->in) {
+        fd_in = open(l->in, O_RDONLY);
+        if (fd_in == -1) {
+            fprintf(stderr, "%s :No such file or directory \n", l->in);
+            exit(-1);   
+        }
         dup2(fd_in, 0);
         close(fd_in);
     }
-    if (out) {
-        fd_out = open(out, O_RDONLY | O_WRONLY | O_CREAT);
+    if (l->out) {
+        fd_out = open(l->out, O_RDWR);
+        if (fd_out == -1) {
+            fd_out = open(l->out, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP |S_IROTH);
+            close(fd_out);
+            fd_out = open(l->out, O_RDWR);
+        }
         dup2(fd_out, 1);
         close(fd_out);
     }
 }
 
-void connect_process(char** writer_cmd, char** reader_cmd) {
-	int file_descriptors[2];
-	pipe(file_descriptors);
-	int pid_reader = fork();
-	if (!pid_reader) {
-		dup2(file_descriptors[0], 0);
-		close(file_descriptors[1]);
-		close(file_descriptors[0]);
-		execvp(reader_cmd[0], reader_cmd);
-	} else {
-		int pid_writer = fork();
-		if (!pid_writer) {
-			dup2(file_descriptors[1], 1);
-			close(file_descriptors[0]);
-			close(file_descriptors[1]);
-			execvp(writer_cmd[0], writer_cmd);
-		} else {
-			int status;
-			wait(&status);
-		}
-	}
+/*
+
+   void connect_process(char** writer_cmd, char** reader_cmd) {
+   int file_descriptors[2];
+   pipe(file_descriptors);
+   int pid_reader = fork();
+   if (!pid_reader) {
+   dup2(file_descriptors[0], 0);
+   close(file_descriptors[0]);
+   close(file_descriptors[1]);
+   execvp(reader_cmd[0], reader_cmd);
+   } else {
+   int pid_writer = fork();
+   if (!pid_writer) {
+   dup2(file_descriptors[1], 1);
+   close(file_descriptors[0]);
+   close(file_descriptors[1]);
+   execvp(writer_cmd[0], writer_cmd);
+   } else {
+   int status;
+// waitpid(pid_reader, &status, 0);
+// waitpid(pid_writer, &status, 0);
+}
+}
+}
+
+*/
+
+void connect_process(char** cmd_1, char** cmd_2) {
+    int file_descriptors[2];
+    pipe(file_descriptors); 
+    int pid_cmd1 = fork();
+    if (!pid_cmd1) {
+        dup2(file_descriptors[1], 1);
+        close(file_descriptors[0]);
+        close(file_descriptors[1]);
+        execvp(cmd_1[0], cmd_1);
+    } else {
+        int pid_cmd2 = fork();
+        if (!pid_cmd2) {
+            dup2(file_descriptors[0], 0);
+            close(file_descriptors[0]);
+            close(file_descriptors[1]);
+            execvp(cmd_2[0], cmd_2);
+        } else {
+            int status;	
+            close(file_descriptors[0]);
+            close(file_descriptors[1]);
+            waitpid(pid_cmd2, &status, 0);
+        }
+    }
+}
+
+
+void handler(int sig) {
+    //printf("Test Signal : %i \n", sig);
+    //int status;
+    //wait(&status);
 }
 
 int main() {
@@ -161,11 +212,26 @@ int main() {
     scm_c_define_gsubr("executer", 1, 0, 0, executer_wrapper);
 #endif
 
+
+    /* TEST */
+    //struct sigaction act;
+    //act.sa_handler = &handler; 
+    //sigemptyset(&act.sa_mask);
+    //act.sa_flags = 0; // SA_NOCLDSTOP | SA_NOCLDWAIT;
+
+    // sigaction(SIGCHLD, &act, 0); 
+    /*
+       char *strsignal(int sig);
+       void psignal(int sig, const char *s);
+       for (int signum=0; signum<=NSIG; signum++) {
+       fprintf (stderr, "(%2d)  : %s\n", signum, strsignal(signum));
+       } */
+    /* TEST */
     while (1) {
         struct cmdline *l;
         char *line=0;
         int i, j;
-        char *prompt = "ensishell>";
+        char *prompt = "ensishell> ";
 
         /* Readline use some internal memory structure that
            can not be cleaned at the end of the program. Thus
@@ -212,6 +278,7 @@ int main() {
         if (l->out) printf("out: %s\n", l->out);
         if (l->bg) printf("background (&)\n");
 
+        int nb_pipe=0;
         /* Display each command of the pipe */
         for (i=0; l->seq[i]!=0; i++) {
             char **cmd = l->seq[i];
@@ -224,25 +291,70 @@ int main() {
                 jobs();
                 continue;
             }
-		}
-		if (l->seq[1] != NULL)
-			connect_process(l->seq[0], l->seq[1]);
-		else {
-			int pid = fork();
-			if (!pid) {
-                modify_io(l->in, l->out);
-				if (execvp(l->seq[0][0], l->seq[0]) == -1) {
-					fprintf(stderr, "Commande non valide.\n");
-					exit(-1);
-				} //else exit(0);
-			} else {
-				if (!l->bg) {
-					int status;
-					waitpid(pid, &status, 0);
-				} else {
-					add_process_background(l->seq[0][0], pid);
-				}
-			}
-		}
-	}
+            if (i!=0) {
+                nb_pipe++;
+            }
+        }	
+
+        /* Pipe Multiple */ /*
+                               int status;
+                               int fd[2*nb_pipe];
+                               for (i=0; i<nb_pipe; i++) {
+                               pipe(fd + 2*i);
+                               }
+                               fprintf(stderr, "%i\n", nb_pipe);
+                               for (i=0; l->seq[i]!=0; i++) {
+                               int pid=fork();
+                               if (!pid) {
+                               if (i == 0) {
+                               dup2(fd[1], 1);
+                               } else if (i <= nb_pipe) {
+                               dup2(fd[i-1], 0);
+                               dup2(fd[i+2], 1);
+                               } else if (i == nb_pipe+1) {
+                               dup2(fd[i],0);
+                               }
+                               for (i=0; i<2*nb_pipe; i++) {
+                               close(fd[i]);
+                               }
+                               execvp(l->seq[i][0], l->seq[i]);
+
+                               } else { */
+        /*
+           for (i=0; i<2*nb_pipe; i++) {
+           close(fd[i]);
+           }*/
+        //waitpid(pid, &status, 0); 
+        /*		  }		    
+                  }
+                  for (i=0; i<2*nb_pipe; i++) {                                                                                           
+                  close(fd[i]);                                                                                                       
+                  }                       
+                  for (i=0; i<nb_pipe+1; i++) {
+                  wait(&status);
+                  }*/
+
+        /* Fin Pipe Multiple */
+
+        if (l->seq[1] != NULL) {
+            connect_process(l->seq[0], l->seq[1]);
+        } else {
+            int pid = fork();
+            if (!pid) {
+                modify_io(l);
+                if (execvp(l->seq[0][0], l->seq[0]) == -1) {
+                    fprintf(stderr, "Commande non valide.\n");
+                    exit(-1);
+                }
+            } else {
+                if (!l->bg) {
+                    int status;
+                    waitpid(pid, &status, 0);
+                } else {
+                    add_process_background(l->seq[0][0], pid);
+                }
+            }
+        }
+    }			
 }
+
