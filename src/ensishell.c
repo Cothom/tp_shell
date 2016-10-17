@@ -29,6 +29,7 @@
  * lines in CMakeLists.txt.
  */
 
+#define USE_GUILE 1
 #if USE_GUILE == 1
 #include <libguile.h>
 
@@ -118,8 +119,6 @@ void jobs() {
     }
 }
 
-/* Fin Modification RANA */
-
 void modify_io(struct cmdline *l) {
     int fd_in, fd_out;
     if (l->in) {
@@ -143,34 +142,6 @@ void modify_io(struct cmdline *l) {
     }
 }
 
-/*
-
-   void connect_process(char** writer_cmd, char** reader_cmd) {
-   int file_descriptors[2];
-   pipe(file_descriptors);
-   int pid_reader = fork();
-   if (!pid_reader) {
-   dup2(file_descriptors[0], 0);
-   close(file_descriptors[0]);
-   close(file_descriptors[1]);
-   execvp(reader_cmd[0], reader_cmd);
-   } else {
-   int pid_writer = fork();
-   if (!pid_writer) {
-   dup2(file_descriptors[1], 1);
-   close(file_descriptors[0]);
-   close(file_descriptors[1]);
-   execvp(writer_cmd[0], writer_cmd);
-   } else {
-   int status;
-// waitpid(pid_reader, &status, 0);
-// waitpid(pid_writer, &status, 0);
-}
-}
-}
-
-*/
-
 void connect_process(char** cmd_1, char** cmd_2) {
     int file_descriptors[2];
     pipe(file_descriptors); 
@@ -187,20 +158,14 @@ void connect_process(char** cmd_1, char** cmd_2) {
             close(file_descriptors[0]);
             close(file_descriptors[1]);
             execvp(cmd_2[0], cmd_2);
-        } else {
-            int status;	
+        } else {	
             close(file_descriptors[0]);
             close(file_descriptors[1]);
-            waitpid(pid_cmd2, &status, 0);
+            int status;
+            wait(&status);
+            wait(&status);
         }
     }
-}
-
-
-void handler(int sig) {
-    //printf("Test Signal : %i \n", sig);
-    //int status;
-    //wait(&status);
 }
 
 int main() {
@@ -212,25 +177,10 @@ int main() {
     scm_c_define_gsubr("executer", 1, 0, 0, executer_wrapper);
 #endif
 
-
-    /* TEST */
-    //struct sigaction act;
-    //act.sa_handler = &handler; 
-    //sigemptyset(&act.sa_mask);
-    //act.sa_flags = 0; // SA_NOCLDSTOP | SA_NOCLDWAIT;
-
-    // sigaction(SIGCHLD, &act, 0); 
-    /*
-       char *strsignal(int sig);
-       void psignal(int sig, const char *s);
-       for (int signum=0; signum<=NSIG; signum++) {
-       fprintf (stderr, "(%2d)  : %s\n", signum, strsignal(signum));
-       } */
-    /* TEST */
     while (1) {
         struct cmdline *l;
         char *line=0;
-        int i, j;
+        //int i, j;
         char *prompt = "ensishell> ";
 
         /* Readline use some internal memory structure that
@@ -278,8 +228,9 @@ int main() {
         if (l->out) printf("out: %s\n", l->out);
         if (l->bg) printf("background (&)\n");
 
-        int nb_pipe=0;
+        //int nb_pipe=0;
         /* Display each command of the pipe */
+        /*
         for (i=0; l->seq[i]!=0; i++) {
             char **cmd = l->seq[i];
             printf("seq[%d]: ", i);
@@ -291,53 +242,55 @@ int main() {
                 jobs();
                 continue;
             }
-            if (i!=0) {
+            if (i != 0) {
                 nb_pipe++;
             }
-        }	
+        }	*/
 
-        /* Pipe Multiple */ /*
-                               int status;
-                               int fd[2*nb_pipe];
-                               for (i=0; i<nb_pipe; i++) {
-                               pipe(fd + 2*i);
-                               }
-                               fprintf(stderr, "%i\n", nb_pipe);
-                               for (i=0; l->seq[i]!=0; i++) {
-                               int pid=fork();
-                               if (!pid) {
-                               if (i == 0) {
-                               dup2(fd[1], 1);
-                               } else if (i <= nb_pipe) {
-                               dup2(fd[i-1], 0);
-                               dup2(fd[i+2], 1);
-                               } else if (i == nb_pipe+1) {
-                               dup2(fd[i],0);
-                               }
-                               for (i=0; i<2*nb_pipe; i++) {
-                               close(fd[i]);
-                               }
-                               execvp(l->seq[i][0], l->seq[i]);
-
-                               } else { */
-        /*
-           for (i=0; i<2*nb_pipe; i++) {
-           close(fd[i]);
-           }*/
-        //waitpid(pid, &status, 0); 
-        /*		  }		    
-                  }
-                  for (i=0; i<2*nb_pipe; i++) {                                                                                           
-                  close(fd[i]);                                                                                                       
-                  }                       
-                  for (i=0; i<nb_pipe+1; i++) {
-                  wait(&status);
-                  }*/
-
+        /* Pipe Multiple */ 
+/*
+        int status;
+        int fd[2*nb_pipe];
+        for (i=0; i<nb_pipe; i++) {
+            pipe(fd + 2*i);
+        }
+        //pipe(fd);
+        fprintf(stderr, "nb_pipe : %i\n", nb_pipe);
+        if (nb_pipe >= 1) {
+            for (i=0; l->seq[i]!=0; i++) {
+                //fprintf(stderr, "Boucle : %i\n", i);
+                int pid=fork();
+                if (!pid) {
+                    if (i == 0) {
+                        dup2(fd[1], 1);
+                        //close(fd[0]);
+                        //close(fd[1]);
+                    } else if (i < nb_pipe) {				
+                        dup2(fd[2*(i+1)-4], 0);
+                        dup2(fd[2*(i+1)-1], 1);
+                    } else if (i == nb_pipe) {
+                        dup2(fd[2*(i+1)-4],0);
+                        //close(fd[0]);
+                        //close(fd[1]);
+                    }
+                    for (i=0; i<2*nb_pipe; i++) {
+                        close(fd[i]);
+                    }
+                    execvp(l->seq[i][0], l->seq[i]);    
+                }		    
+            } 
+        }
+        for (i=0; i<2*nb_pipe; i++) {                                                                                           
+            close(fd[i]);                                                                                                       
+        }                       
+        for (i=0; i<nb_pipe+1; i++) {
+            wait(&status);
+        }
+*/
         /* Fin Pipe Multiple */
 
         if (l->seq[1] != NULL) {
-            connect_process(l->seq[0], l->seq[1]);
+            //connect_process(l->seq[0], l->seq[1]);
         } else {
             int pid = fork();
             if (!pid) {
