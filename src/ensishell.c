@@ -143,33 +143,6 @@ void modify_io(struct cmdline *l) {
     }
 }
 
-/*
-
-void connect_process(char** writer_cmd, char** reader_cmd) {
-	int file_descriptors[2];
-	pipe(file_descriptors);
-	int pid_reader = fork();
-	if (!pid_reader) {
-	    dup2(file_descriptors[0], 0);
-	    close(file_descriptors[0]);
-	    close(file_descriptors[1]);
-	    execvp(reader_cmd[0], reader_cmd);
-	} else {
-	    int pid_writer = fork();
-	    if (!pid_writer) {
-		dup2(file_descriptors[1], 1);
-		close(file_descriptors[0]);
-		close(file_descriptors[1]);
-		execvp(writer_cmd[0], writer_cmd);
-	    } else {
-		int status;
-		// waitpid(pid_reader, &status, 0);
-		// waitpid(pid_writer, &status, 0);
-	    }
-	}
-}
-
-*/
 
 void connect_process(char** cmd_1, char** cmd_2) {
 	int file_descriptors[2];
@@ -303,33 +276,27 @@ int main() {
 		for (i=0; i<nb_pipe; i++) {
 		    pipe(fd + 2*i);
                 }
-		//pipe(fd);
 		fprintf(stderr, "nb_pipe : %i\n", nb_pipe);
 		if (nb_pipe >= 1) {
 		    for (i=0; l->seq[i]!=0; i++) {
-			//fprintf(stderr, "Boucle : %i\n", i);
 			int pid=fork();
 			if (!pid) {
 			    if (i == 0) {
 				dup2(fd[1], 1);
-				//close(fd[0]);
-				//close(fd[1]);
 			    } else if (i < nb_pipe) {				
 				dup2(fd[2*(i+1)-4], 0);
 				dup2(fd[2*(i+1)-1], 1);
 			    } else if (i == nb_pipe) {
 				dup2(fd[2*(i+1)-4],0);
-				//close(fd[0]);
-				//close(fd[1]);
 			    }
-			    for (i=0; i<2*nb_pipe; i++) {
-				close(fd[i]);
+			    for (int j=0; j<2*nb_pipe; j++) {
+				close(fd[j]);
 			    }
 			    execvp(l->seq[i][0], l->seq[i]);    
 			}		    
 		    } 
 		}
-		for (i=0; i<2*nb_pipe; i++) {                                                                                           
+		for (i=0; i<2*nb_pipe; i++) {                                                                                          
 		    close(fd[i]);                                                                                                       
 		}                       
 		for (i=0; i<nb_pipe+1; i++) {
@@ -339,7 +306,7 @@ int main() {
 		/* Fin Pipe Multiple */
 
 		if (l->seq[1] != NULL) {
-		    //connect_process(l->seq[0], l->seq[1]);
+		    // connect_process(l->seq[0], l->seq[1]);
 		} else {
 		    int pid = fork();
 		    if (!pid) {
