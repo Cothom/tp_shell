@@ -187,11 +187,12 @@ void connect_process(char** cmd_1, char** cmd_2) {
 		close(file_descriptors[0]);
 		close(file_descriptors[1]);
 		execvp(cmd_2[0], cmd_2);
-	    } else {
-		int status;	
+	    } else {	
 		close(file_descriptors[0]);
                 close(file_descriptors[1]);
-		waitpid(pid_cmd2, &status, 0);
+		int status;
+		wait(&status);
+		wait(&status);
 	    }
 	}
 }
@@ -296,48 +297,49 @@ int main() {
 			}
 		}	
 
-		/* Pipe Multiple */ /*
+		/* Pipe Multiple */ 
 		int status;
 		int fd[2*nb_pipe];
 		for (i=0; i<nb_pipe; i++) {
 		    pipe(fd + 2*i);
                 }
-		fprintf(stderr, "%i\n", nb_pipe);
-		for (i=0; l->seq[i]!=0; i++) {
-		    int pid=fork();
-		    if (!pid) {
-			if (i == 0) {
-			    dup2(fd[1], 1);
-			} else if (i <= nb_pipe) {
-			    dup2(fd[i-1], 0);
-			    dup2(fd[i+2], 1);
-			} else if (i == nb_pipe+1) {
-			    dup2(fd[i],0);
-			}
-			for (i=0; i<2*nb_pipe; i++) {
-			    close(fd[i]);
-			}
-			execvp(l->seq[i][0], l->seq[i]);
-
-			} else { */
-			/*
-			for (i=0; i<2*nb_pipe; i++) {
-                            close(fd[i]);
-			    }*/
-			//waitpid(pid, &status, 0); 
-		/*		  }		    
-                }
+		//pipe(fd);
+		fprintf(stderr, "nb_pipe : %i\n", nb_pipe);
+		if (nb_pipe >= 1) {
+		    for (i=0; l->seq[i]!=0; i++) {
+			//fprintf(stderr, "Boucle : %i\n", i);
+			int pid=fork();
+			if (!pid) {
+			    if (i == 0) {
+				dup2(fd[1], 1);
+				//close(fd[0]);
+				//close(fd[1]);
+			    } else if (i < nb_pipe) {				
+				dup2(fd[2*(i+1)-4], 0);
+				dup2(fd[2*(i+1)-1], 1);
+			    } else if (i == nb_pipe) {
+				dup2(fd[2*(i+1)-4],0);
+				//close(fd[0]);
+				//close(fd[1]);
+			    }
+			    for (i=0; i<2*nb_pipe; i++) {
+				close(fd[i]);
+			    }
+			    execvp(l->seq[i][0], l->seq[i]);    
+			}		    
+		    } 
+		}
 		for (i=0; i<2*nb_pipe; i++) {                                                                                           
 		    close(fd[i]);                                                                                                       
 		}                       
 		for (i=0; i<nb_pipe+1; i++) {
-		     wait(&status);
-		}*/
+		    wait(&status);
+		}
 		
 		/* Fin Pipe Multiple */
 
 		if (l->seq[1] != NULL) {
-		    connect_process(l->seq[0], l->seq[1]);
+		    //connect_process(l->seq[0], l->seq[1]);
 		} else {
 		    int pid = fork();
 		    if (!pid) {
