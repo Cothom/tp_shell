@@ -119,7 +119,7 @@ void jobs() {
 }
 
 /* Fin Modification RANA */
-
+/*
 void modify_io(struct cmdline *l) {
     int fd_in, fd_out;
     if (l->in) {
@@ -142,6 +142,32 @@ void modify_io(struct cmdline *l) {
 	close(fd_out);
     }
 }
+
+*/
+
+void modify_io(char *in, char *out) {
+    int fd_in, fd_out;
+    if (in) {
+	fd_in = open(in, O_RDONLY);
+	if (fd_in == -1) {
+	    fprintf(stderr, "%s :No such file or directory \n", in);
+	    exit(-1);   
+	}
+	dup2(fd_in, 0);
+	close(fd_in);
+    }
+    if (out) {
+	fd_out = open(out, O_RDWR);
+	if (fd_out == -1) {
+	    fd_out = open(out, O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP |S_IROTH);
+	    close(fd_out);
+	    fd_out = open(out, O_RDWR);
+	}
+	dup2(fd_out, 1);
+	close(fd_out);
+    }
+}
+
 
 
 void connect_process(char** cmd_1, char** cmd_2) {
@@ -240,7 +266,7 @@ int main() {
 			terminate(0);
 		}
 		
-
+	  
 		
 		if (l->err) {
 			/* Syntax error, read another command */
@@ -272,45 +298,46 @@ int main() {
 
 		/* Pipe Multiple */ 
 		int status;
-		int fd[2*nb_pipe];
-		for (i=0; i<nb_pipe; i++) {
-		    pipe(fd + 2*i);
-                }
-		fprintf(stderr, "nb_pipe : %i\n", nb_pipe);
 		if (nb_pipe >= 1) {
+		    int fd[2*nb_pipe];
+		    for (i=0; i<nb_pipe; i++) {
+			pipe(fd + 2*i);
+		    }
 		    for (i=0; l->seq[i]!=0; i++) {
 			int pid=fork();
 			if (!pid) {
 			    if (i == 0) {
 				dup2(fd[1], 1);
+				modify_io(l->in, NULL);
 			    } else if (i < nb_pipe) {				
 				dup2(fd[2*(i+1)-4], 0);
 				dup2(fd[2*(i+1)-1], 1);
 			    } else if (i == nb_pipe) {
 				dup2(fd[2*(i+1)-4],0);
+				modify_io(NULL, l->out);
 			    }
 			    for (int j=0; j<2*nb_pipe; j++) {
 				close(fd[j]);
 			    }
-			    execvp(l->seq[i][0], l->seq[i]);    
+			    if (execvp(l->seq[i][0], l->seq[i]) == -1) {
+				fprintf(stderr, "Commande '%s' non valide.\n", l->seq[i][0]);
+				exit(-1);
+			    }    
 			}		    
 		    } 
-		}
-		for (i=0; i<2*nb_pipe; i++) {                                                                                          
-		    close(fd[i]);                                                                                                       
-		}                       
-		for (i=0; i<nb_pipe+1; i++) {
-		    wait(&status);
-		}
+		    
+		    for (i=0; i<2*nb_pipe; i++) {                                                                                          
+			close(fd[i]);                                                                                                       
+		    }                       
+		    for (i=0; i<nb_pipe+1; i++) {
+			wait(&status);
+		    }
 		
 		/* Fin Pipe Multiple */
-
-		if (l->seq[1] != NULL) {
-		    // connect_process(l->seq[0], l->seq[1]);
 		} else {
 		    int pid = fork();
 		    if (!pid) {
-			modify_io(l);
+			modify_io(l->in, l->out);
 			if (execvp(l->seq[0][0], l->seq[0]) == -1) {
 			    fprintf(stderr, "Commande non valide.\n");
 			    exit(-1);
