@@ -141,8 +141,12 @@ void remove_process_background(int pid, struct timeval end_time) {
     if (prev) {
         prev->next = current->next;
     } else {
-        process_background_head = NULL;
-        process_background_tail = NULL;
+	if (process_background_head == process_background_tail) {
+	    process_background_head = NULL;
+	    process_background_tail = NULL;
+	} else {
+	    process_background_head = process_background_head->next;
+	}
     }
     free(current->name);
     free(current);
