@@ -33,10 +33,9 @@ struct process_background_linked* process_background_tail = NULL;
 
 void terminate(char *line);
 void add_process_background(char* name, int pid);
-void remove_process_background(int pid);
+void remove_process_background(int pid, struct timeval end_time);
 void jobs();
 void modify_io(char *in, char *out);
-void connect_process(char** cmd_1, char** cmd_2);
 void handler(int sig);
 int seq_length(struct cmdline *l);
 void display_cmdline(struct cmdline *l);
@@ -58,22 +57,11 @@ struct sigaction act; //
 
 int question6_executer(char *line)
 {
-    /* Question 6: Insert your code to execute the command line
-     * identically to the standard execution scheme:
-     * parsecmd, then fork+execvp, for a single command.
-     * pipe and i/o redirection are not required.
-     */
-//    printf("Not implemented yet: can not execute %s\n", line);
-
     struct cmdline *l = parsecmd(&line);
     if (!l) terminate(0);
 
     display_cmdline(l);
     exec_cmdline(l);
-
-    /* Remove this line when using parsecmd as it will free it */
-    free(line);
-
     return 0;
 }
 
@@ -125,8 +113,20 @@ void add_process_background(char* name, int pid) {
     }
 }
 
-void remove_process_background(int pid) {
-    printf("pid à supprimer : %d\n", pid);
+struct timeval ellapsed_time(struct timeval start, struct timeval end) {
+    struct timeval et = end;
+    et.tv_sec -= start.tv_sec;
+    if (start.tv_usec > et.tv_usec) {
+        et.tv_sec--;
+        et.tv_usec = 1000000 - (start.tv_usec - et.tv_usec);
+    } else {
+        et.tv_usec -= start.tv_usec;
+    }
+    return et;
+}
+
+void remove_process_background(int pid, struct timeval end_time) {
+    //printf("PID to delete : %d\n", pid);
     struct process_background_linked* current = process_background_head;
     struct process_background_linked* prev = NULL;
     while (current != NULL) {
@@ -135,10 +135,9 @@ void remove_process_background(int pid) {
         current = current->next;
     }
     if (current == NULL) return;
-    struct timeval exec_time;
-    gettimeofday(&exec_time, NULL);
-    exec_time.tv_sec = current->start_time.tv_sec;
-    printf("PID : %d\tCommand : %s\t\tExecution time : %d\n", current->pid, current->name, (int) exec_time.tv_sec);
+
+    struct timeval exec_time = ellapsed_time(current->start_time, end_time);
+    printf("PID : %d\tCommand : %s\t\tExecution time : %d,%d sec\n", current->pid, current->name, (int) exec_time.tv_sec, (int) exec_time.tv_usec);
     if (prev) {
         prev->next = current->next;
     } else {
@@ -182,46 +181,14 @@ void modify_io(char *in, char *out) {
     }
 }
 
-
-
-void connect_process(char** cmd_1, char** cmd_2) {
-    int file_descriptors[2];
-    pipe(file_descriptors); 
-    int pid_cmd1 = fork();
-    if (!pid_cmd1) {
-        dup2(file_descriptors[1], 1);
-        close(file_descriptors[0]);
-        close(file_descriptors[1]);
-        execvp(cmd_1[0], cmd_1);
-    } else {
-        int pid_cmd2 = fork();
-        if (!pid_cmd2) {
-            dup2(file_descriptors[0], 0);
-            close(file_descriptors[0]);
-            close(file_descriptors[1]);
-            execvp(cmd_2[0], cmd_2);
-        } else {	
-            close(file_descriptors[0]);
-            close(file_descriptors[1]);
-            int status;
-            wait(&status);
-            wait(&status);
-        }
-    }
-}
-
-
 void sigchld_sigaction(int sig, siginfo_t *siginfo, void *useless_arg) {
+    struct timeval end_time;
+    gettimeofday(&end_time, NULL);
     if (is_background_process(siginfo->si_pid)) {
-        printf("Received signal : %i\tFrom PID : %d\n", sig, siginfo->si_pid);
-        remove_process_background(siginfo->si_pid);
-        printf("User time : %d\tSystem time : %d\n", (int) siginfo->si_utime, (int) siginfo->si_stime);
+        printf("\nReceived signal : %i\tFrom PID : %d\n", sig, siginfo->si_pid);
+        remove_process_background(siginfo->si_pid, end_time);
+        printf("User time : %d sec\tSystem time : %d sec\n", (int) siginfo->si_utime, (int) siginfo->si_stime);
     }
-    // sigset_t ens2;
-    //sigaddset(&ens2, sig);
-    //sigprocmask(SIG_SETMASK, &ens1, NULL);
-    //int status;
-    //wait(&status);
 }
 
 int seq_length(struct cmdline *l) {
@@ -261,7 +228,6 @@ void exec_cmdline(struct cmdline *l) {
 
     int nb_pipe = seq_length(l) - 1;
 
-    /* Pipe Multiple */ 
     int i, status;
     if (nb_pipe >= 1) {
         int fd[2*nb_pipe];
@@ -296,7 +262,6 @@ void exec_cmdline(struct cmdline *l) {
         for (i = 0; i < nb_pipe+1; i++)
             wait(&status);
 
-        /* Fin Pipe Multiple */
     } else {
         int pid = fork();
         if (!pid) {
@@ -318,7 +283,6 @@ void exec_cmdline(struct cmdline *l) {
             }
         }
     }
-
 }
 
 int main() {
@@ -336,19 +300,6 @@ int main() {
     sigchld_act.sa_flags = SA_SIGINFO;
     sigaction(SIGCHLD, &sigchld_act, NULL);
 
-    /* TEST */
-    //struct sigaction act;
-    //act.sa_handler = &handler; 
-    //sigemptyset(&act.sa_mask);
-    //act.sa_flags = 0; // SA_NOCLDSTOP | SA_NOCLDWAIT;
-    //sigaction(SIGCHLD, &act, 0); 
-    /*
-       char *strsignal(int sig);
-       void psignal(int sig, const char *s);
-       for (int signum=0; signum<=NSIG; signum++) {
-       fprintf (stderr, "(%2d)  : %s\n", signum, strsignal(signum));
-       } */
-    /* TEST */
     while (1) {
         struct cmdline *l;
         char *line=0;
@@ -382,26 +333,11 @@ int main() {
         l = parsecmd( & line);
 
         /* If input stream closed, normal termination */
-        if (!l) {
-
+        if (!l)
             terminate(0);
-        }
 
-        /* Affichage Signaux pendants */
-        //sigset_t ens2;
-        //sigpending(&ens2);
-        //printf("Signaux pendants : ");
-        //for (int sig=0; sig<=NSIG; sig++) {
-        //    if(sigismember(&ens2, sig)) printf("%d ", sig);
-        //}
-        //printf("\n");
-        /* Fin Affichage Signaux pendants */
-
-        display_cmdline(l);
+        //display_cmdline(l);
         exec_cmdline(l);
     }			
 }
-
-
-
 
